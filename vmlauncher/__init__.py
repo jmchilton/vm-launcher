@@ -12,7 +12,8 @@ DEFAULT_AWS_IMAGE_ID = "ami-0bf6af4e"
 DEFAULT_AWS_SIZE_ID = "m1.large"
 DEFAULT_AWS_AVAILABILITY_ZONE = "us-west-1"
 
-from fabric.api import local, env, sudo
+from fabric.api import local, env, sudo, put
+
 
 class VmLauncher:
 
@@ -235,7 +236,7 @@ class Ec2VmLauncher(VmLauncher):
         sudo("apt-add-repository ppa:awstools-dev/awstools")
         sudo("apt-get update")
         sudo('export DEBIAN_FRONTEND=noninteractive; sudo -E apt-get install ec2-api-tools ec2-ami-tools -y --force-yes')
-        
+
     def _install_packaging_scripts(self):
         user_id = self.options["aws"]["user_id"]
         bundle_cmd = "sudo ec2-bundle-vol -k %s/ec2_key -c%s/ec2_cert -u %s" % \
@@ -248,7 +249,7 @@ class Ec2VmLauncher(VmLauncher):
         self._write_script("%s/upload_bundle.sh" % env.packaging_dir, upload_cmd)
 
         name = self.options["aws"]["package_image_name"]
-        manifest = "image.manifest.xml"  
+        manifest = "image.manifest.xml"
         register_cmd = "sudo ec2-register -K %s/ec2_key -C %s/ec2_cert %s/%s -n %s" % (env.packaging_dir, env.packaging_dir, bucket, manifest, name)
         self._write_script("%s/register_bundle.sh" % env.packaging_dir, register_cmd)
 

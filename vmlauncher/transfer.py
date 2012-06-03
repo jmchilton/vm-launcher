@@ -130,24 +130,34 @@ class FileTransferManager:
                  destination="/tmp",
                  transfer_as="root",
                  local_temp=None):
+        self.compress = compress
+        self.num_compress_threads = num_compress_threads
+        self.num_transfer_threads = num_transfer_threads
+        self.num_decompress_threads = num_decompress_threads
+        self.chunk_size = chunk_size
+        self.transfer_retries = transfer_retries
+        self.destination = destination
+        self.transfer_as = transfer_as
+        self.local_temp = local_temp
 
         if not self.local_temp:
             self.local_temp = "/tmp"
 
         local("mkdir -p '%s'" % self.local_temp)
-        self.transfer_complete = False
-        self.transfer_complete_condition = Condition()
         self.file_splitter = FileSplitter(self.chunk_size, self.local_temp, self)
 
     def handle_chunk(self, chunk, transfer_target):
         self._enqueue_chunk(TransferChunk(chunk, transfer_target))
 
-    def transfer_files(self, args):
+    def transfer_files(self, files=[], compressed_files=[]):
+        self.transfer_complete = False
+        self.transfer_complete_condition = Condition()
+
         self._setup_destination_directory()
 
         self._setup_workers()
 
-        self._enqueue_files(args)
+        self._enqueue_files(files, compressed_files)
 
         self._wait_for_completion()
 
@@ -178,12 +188,12 @@ class FileTransferManager:
             t.daemon = True
             t.start()
 
-    def _enqueue_files(self, args):
-        for file in args.files:
+    def _enqueue_files(self, files, compressed_files):
+        for file in files:
             transfer_target = TransferTarget(file, False, self)
             self.compress_queue.put(transfer_target)
 
-        for compressed_file in args.compressed_files:
+        for compressed_file in compressed_files:
             transfer_target = TransferTarget(compressed_file, True, self)
             self.compress_queue.put(transfer_target)
 

@@ -240,14 +240,14 @@ class FileTransferManager:
                     if compressed and chunked:
                         destination = transfer_target.decompressed_basename()
                         if transfer_target.precompressed:
-                            sudo("cat '%s_'* | gunzip -c > %s" % (basename, destination), user="galaxy")
+                            sudo("cat '%s_'* | gunzip -c > %s" % (basename, destination), user=self.transfer_as)
                         else:
-                            sudo("zcat '%s_'* > %s" % (basename, destination), user="galaxy")
-                        sudo("rm '%s_'*" % (basename), user="galaxy")
+                            sudo("zcat '%s_'* > %s" % (basename, destination), user=self.transfer_as)
+                        sudo("rm '%s_'*" % (basename), user=self.transfer_as)
                     elif compressed:
-                        sudo("gunzip -f '%s'" % transfer_target.compressed_basename(), user="galaxy")
+                        sudo("gunzip -f '%s'" % transfer_target.compressed_basename(), user=self.transfer_as)
                     elif chunked:
-                        sudo("cat '%s'_* > '%s'" % (basename, basename), user="galaxy")
+                        sudo("cat '%s'_* > '%s'" % (basename, basename), user=self.transfer_as)
             except Exception as e:
                 print red("Failed to decompress or unsplit a transfered file.")
                 print red(e)

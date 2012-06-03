@@ -108,7 +108,7 @@ class VagrantConnection:
 class VagrantNode:
 
     def __init__(self):
-        self.name = "galaxy"
+        self.name = "vagrant"
         self.uuid = "vagrant"
 
 

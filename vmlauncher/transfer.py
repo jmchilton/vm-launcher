@@ -1,6 +1,7 @@
 import os
 import gzip
 
+from operator import itemgetter
 from sys import exit
 from threading import Thread
 from threading import Condition
@@ -8,6 +9,7 @@ from Queue import Queue
 
 from fabric.api import local, put, sudo, cd
 from fabric.colors import red
+
 
 
 class FileSplitter:
@@ -189,13 +191,26 @@ class FileTransferManager:
             t.start()
 
     def _enqueue_files(self, files, compressed_files):
+        transfer_targets = []
+
         for file in files:
             transfer_target = TransferTarget(file, False, self)
-            self.compress_queue.put(transfer_target)
+            transfer_targets.append(transfer_target)
 
         for compressed_file in compressed_files:
             transfer_target = TransferTarget(compressed_file, True, self)
+            transfer_targets.append(transfer_target)
+
+        transfer_targets = self._sort_transfer_targets(transfer_targets)
+        for transfer_target in transfer_targets:
             self.compress_queue.put(transfer_target)
+
+    def _sort_transfer_targets(self, transfer_targets):
+        for i in range(len(transfer_targets)):
+            transfer_target = transfer_targets[i]
+            transfer_targets[i] = transfer_target, os.stat(transfer_target.file).st_size
+        transfer_targets.sort(key=itemgetter(1), reverse=True)
+        return  [transfer_target[0] for transfer_target in transfer_targets]
 
     def _wait_for_completion(self):
         self.compress_queue.join()

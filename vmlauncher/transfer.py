@@ -34,7 +34,7 @@ class FileSplitter:
 
         input = open(path, 'rb')
         while True:
-            chunk_name = "%s_%08d%s" % (basename, chunk_num, suffix)
+            chunk_name = "%s_part%08d%s" % (basename, chunk_num, suffix)
             chunk_path = os.path.join(self.destination_directory, chunk_name)
             this_chunk_size = min(self.chunk_size, file_size - total_bytes)
             if this_chunk_size <= 0:
@@ -240,14 +240,14 @@ class FileTransferManager:
                     if compressed and chunked:
                         destination = transfer_target.decompressed_basename()
                         if transfer_target.precompressed:
-                            sudo("cat '%s_'* | gunzip -c > %s" % (basename, destination), user=self.transfer_as)
+                            sudo("cat '%s_part'* | gunzip -c > %s" % (basename, destination), user=self.transfer_as)
                         else:
-                            sudo("zcat '%s_'* > %s" % (basename, destination), user=self.transfer_as)
+                            sudo("zcat '%s_part'* > %s" % (basename, destination), user=self.transfer_as)
                         sudo("rm '%s_'*" % (basename), user=self.transfer_as)
                     elif compressed:
                         sudo("gunzip -f '%s'" % transfer_target.compressed_basename(), user=self.transfer_as)
                     elif chunked:
-                        sudo("cat '%s'_* > '%s'" % (basename, basename), user=self.transfer_as)
+                        sudo("cat '%s'_part* > '%s'" % (basename, basename), user=self.transfer_as)
             except Exception as e:
                 print red("Failed to decompress or unsplit a transfered file.")
                 print red(e)

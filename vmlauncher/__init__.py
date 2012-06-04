@@ -117,7 +117,7 @@ class VmLauncher:
             if not node:
                 raise Exception("Failed to find instance of uuid %s" % instance_id)
         else:
-            node = self.__boot_new(conn)
+            node = self._boot_new(conn)
         return node
 
 
@@ -179,7 +179,7 @@ class OpenstackVmLauncher(VmLauncher):
     def get_ip(self):
         return self.public_ip
 
-    def __boot_new(self, conn):
+    def _boot_new(self, conn):
         if 'image_id' in self._driver_options():
             image_id = self._driver_options()['image_id']
         else:

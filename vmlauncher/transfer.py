@@ -258,7 +258,7 @@ class FileTransferManager:
                             sudo("cat '%s_part'* | gunzip -c > %s" % (basename, destination), user=self.transfer_as)
                         else:
                             sudo("zcat '%s_part'* > %s" % (basename, destination), user=self.transfer_as)
-                        sudo("rm '%s_'*" % (basename), user=self.transfer_as)
+                        sudo("rm '%s_part'*" % (basename), user=self.transfer_as)
                     elif compressed:
                         sudo("gunzip -f '%s'" % transfer_target.compressed_basename(), user=self.transfer_as)
                     elif chunked:

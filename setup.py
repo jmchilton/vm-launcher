@@ -48,7 +48,7 @@ class Pep8Command(Command):
             sys.exit(1)
 
         cwd = getcwd()
-        retcode = call(('pep8 %s/vmlauncher/ %s/test/' % (cwd, cwd)).split(' '))
+        retcode = call(('pep8 %s/vmlauncher/ %s/tests/' % (cwd, cwd)).split(' '))
         sys.exit(retcode)
 
 setup(

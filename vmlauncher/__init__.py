@@ -17,14 +17,25 @@ from fabric.api import local, env, sudo, put
 
 class VmLauncher:
 
-    def __init__(self, options):
+    def __init__(self, driver_type, options):
         self.options = options
+        self.driver_type = driver_type
         self.__set_and_verify_key()
 
     def __set_and_verify_key(self):
         self.key_file = self.options['key_file']
         if not os.path.exists(self.key_file):
             raise Exception("Invalid or unspecified key_file options: %s" % self.key_file)
+
+    def _get_driver_options(self, driver_option_keys):
+        driver_options = {}
+        for key in driver_option_keys:
+            if key in self._driver_options():
+                driver_options[key] = self._driver_options()[key]
+        return driver_options
+
+    def _driver_options(self):
+        return self.options[self.driver_type]
 
     def get_key_file(self):
         return self.key_file
@@ -40,13 +51,19 @@ class VmLauncher:
     def _wait_for_node_info(self, f):
         initial_value = f(self.node)
         if initial_value:
-            return initial_value
+            return self._parse_node_info(initial_value)
         while True:
             time.sleep(10)
             refreshed_node = self._find_node()
             refreshed_value = f(refreshed_node)
-            if refreshed_value:
-                return refreshed_value
+            if refreshed_value and not refreshed_value == []:
+                return self._parse_node_info(refreshed_value)
+
+    def _parse_node_info(self, value):
+        if isinstance(value, basestring):
+            return value
+        else:
+            return value[0]
 
     def _find_node(self):
         nodes = self.conn.list_nodes()
@@ -91,6 +108,18 @@ class VmLauncher:
         self.connect_driver()
         return self.conn.list_nodes()
 
+    def _boot(self):
+        conn = self.conn
+        if 'use_existing_instance' in self._driver_options():
+            instance_id = self._driver_options()['use_existing_instance']
+            nodes = conn.list_nodes()
+            node = [node for node in nodes if node.uuid == instance_id][0]
+            if not node:
+                raise Exception("Failed to find instance of uuid %s" % instance_id)
+        else:
+            node = self.__boot_new(conn)
+        return node
+
 
 class VagrantConnection:
     """'Fake' connection type to mimic libcloud's but for Vagrant"""
@@ -120,7 +149,7 @@ class VagrantVmLauncher(VmLauncher):
         return self.conn
 
     def __init__(self, options):
-        VmLauncher.__init__(self, options)
+        VmLauncher.__init__(self, 'vagrant', options)
         self.uuid = "test"
 
     def _boot(self):
@@ -141,39 +170,26 @@ class OpenstackVmLauncher(VmLauncher):
     """ Wrapper around libcloud's openstack API. """
 
     def __init__(self, options):
-        VmLauncher.__init__(self, options)
-
-    def get_ip(self):
-        return self.public_ip
+        VmLauncher.__init__(self, 'openstack', options)
 
     def connect_driver(self):
         self.conn = self.__get_connection()
         return self.conn
 
-    def _boot(self):
-        conn = self.conn
-        if 'use_existing_instance' in self.options['openstack']:
-            instance_id = self.options['openstack']['use_existing_instance']
-            nodes = conn.list_nodes()
-            node = [node for node in nodes if node.uuid == instance_id][0]
-            if not node:
-                raise Exception("Failed to find instance of uuid %s" % instance_id)
-        else:
-            node = self.__boot_new(conn)
-        return node
+    def get_ip(self):
+        return self.public_ip
 
     def __boot_new(self, conn):
-        if 'image_id' in self.options['openstack']:
-            image_id = self.options['openstack']['image_id']
+        if 'image_id' in self._driver_options():
+            image_id = self._driver_options()['image_id']
         else:
             image_id = None
-        if self.options['openstack']:
-            flavor_id = self.options['openstack']['flavor_id']
+        if self._driver_options():
+            flavor_id = self._driver_options()['flavor_id']
         else:
             flavor_id = None
-        key_name = self.options['openstack']['keypair_name']
+        key_name = self._driver_options()['keypair_name']
         hostname = self.options['hostname']
-        self.public_ip = self.options['openstack']['public_ip']
 
         images = conn.list_images()
         image = [image for image in images if (not image_id) or (image.id == image_id)][0]
@@ -190,33 +206,77 @@ class OpenstackVmLauncher(VmLauncher):
             time.sleep(1)
             iteration_node = [n for n in conn.list_nodes() if n.uuid == node.uuid][0]
 
-        conn.ex_add_floating_ip(node, self.public_ip)
+        #conn.ex_add_floating_ip(node, self.public_ip)
         return node
 
     def __get_connection(self):
         driver = get_driver(Provider.OPENSTACK)
-        openstack_api_host = self.options['openstack']['api_host']
-        openstack_username = self.options['openstack']['username']
-        openstack_api_key = self.options['openstack']['api_key']
-        openstack_tennant_id = self.options['openstack']['tennant_id']
+        openstack_username = self._driver_options()['username']
+        openstack_api_key = self._driver_options()['password']
 
-        auth_url = 'http://%s:5000' % openstack_api_host
-        base_url = 'http://%s:8774/v1.1/%s/' % (openstack_api_host, openstack_tennant_id)
+        driver_option_keys = ['host',
+                              'secure',
+                              'port',
+                              'ex_force_auth_url',
+                              'ex_force_auth_version',
+                              'ex_force_base_url',
+                              'ex_tenant_name']
+
+        driver_options = self._get_driver_options(driver_option_keys)
         conn = driver(openstack_username,
                       openstack_api_key,
-                      False,
-                      host=openstack_api_host,
-                      port=8774,
-                      ex_force_auth_url=auth_url,
-                      ex_force_auth_version='1.0',
-                      ex_force_base_url=base_url)
+                      **driver_options)
         return conn
+
+
+class EucalyptusVmLauncher(VmLauncher):
+
+    def __init__(self, options):
+        VmLauncher.__init__(self, 'eucalyptus', options)
+
+    def get_ip(self):
+        return self._wait_for_node_info(lambda node: node.public_ips)
+
+    def connect_driver(self):
+        self.conn = self.__get_connection()
+        return self.conn
+
+    def __get_connection(self):
+        driver = get_driver(Provider.EUCALYPTUS)
+        driver_option_keys = ['secret',
+                              'secure',
+                              'port',
+                              'host',
+                              'path']
+
+        driver_options = self._get_driver_options(driver_option_keys)
+        ec2_access_id = self._access_id()
+        conn = driver(ec2_access_id, **driver_options)
+        return conn
+
+    def _access_id(self):
+        return self._driver_options()["ec2_access_id"]
+
+    def _boot_new(self, conn):
+        image_id = self._driver_options()["image_id"]
+        size_id = self._driver_options()["size_id"]
+
+        image = NodeImage(id=image_id, name="", driver="")
+        size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
+
+        keyname = self._driver_options()["keypair_name"]
+        hostname = self.options["hostname"]
+        node = conn.create_node(name=hostname,
+                                image=image,
+                                size=size,
+                                ex_keyname=keyname)
+        return node
 
 
 class Ec2VmLauncher(VmLauncher):
 
     def __init__(self, options):
-        VmLauncher.__init__(self, options)
+        VmLauncher.__init__(self, 'aws', options)
 
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.extra['dns_name'])
@@ -238,17 +298,17 @@ class Ec2VmLauncher(VmLauncher):
         sudo('export DEBIAN_FRONTEND=noninteractive; sudo -E apt-get install ec2-api-tools ec2-ami-tools -y --force-yes')
 
     def _install_packaging_scripts(self):
-        user_id = self.options["aws"]["user_id"]
+        user_id = self._driver_options()["user_id"]
         bundle_cmd = "sudo ec2-bundle-vol -k %s/ec2_key -c%s/ec2_cert -u %s" % \
             (env.packaging_dir, env.packaging_dir, user_id)
         self._write_script("%s/bundle_image.sh" % env.packaging_dir, bundle_cmd)
 
-        bucket = self.options["aws"]["package_bucket"]
+        bucket = self._driver_options()["package_bucket"]
         upload_cmd = "sudo ec2-upload-bundle -b %s -m /tmp/image.manifest.xml -a %s -s %s" % \
             (bucket,  self._access_id(), self._secret_key())
         self._write_script("%s/upload_bundle.sh" % env.packaging_dir, upload_cmd)
 
-        name = self.options["aws"]["package_image_name"]
+        name = self._driver_options()["package_image_name"]
         manifest = "image.manifest.xml"
         register_cmd = "sudo ec2-register -K %s/ec2_key -C %s/ec2_cert %s/%s -n %s" % (env.packaging_dir, env.packaging_dir, bucket, manifest, name)
         self._write_script("%s/register_bundle.sh" % env.packaging_dir, register_cmd)
@@ -259,33 +319,24 @@ class Ec2VmLauncher(VmLauncher):
         sudo("chmod +x %s" % path)
 
     def _copy_keys(self):
-        ec2_key_path = self.options["aws"]["x509_key"]
-        ec2_cert_path = self.options["aws"]["x509_cert"]
+        ec2_key_path = self._driver_options()["x509_key"]
+        ec2_cert_path = self._driver_options()["x509_cert"]
         put(ec2_key_path, "%s/ec2_key" % env.packaging_dir, use_sudo=True)
         put(ec2_cert_path, "%s/ec2_cert" % env.packaging_dir, use_sudo=True)
 
-    def _boot(self):
-        conn = self.conn
-        if 'use_existing_instance' in self.options["aws"]:
-            instance_id = self.options['aws']['use_existing_instance']
-            nodes = conn.list_nodes()
-            for node in nodes:
-                print node.uuid
-                if node.uuid == instance_id:
-                    return node
-            raise Exception("Could not find instance with id %s" % instance_id)
-
-        if "image_id" in self.options["aws"]:
-            image_id = self.options["aws"]["image_id"]
+    def _boot_new(self, conn):
+        if "image_id" in self._driver_options():
+            image_id = self._driver_options()["image_id"]
         else:
             image_id = DEFAULT_AWS_IMAGE_ID
 
-        if "size_id" in self.options["aws"]:
-            size_id = self.options["aws"]["size_id"]
+        if "size_id" in self._driver_options():
+            size_id = self._driver_options()["size_id"]
         else:
             size_id = DEFAULT_AWS_SIZE_ID
-        if "availability_zone" in self.options["aws"]:
-            availability_zone = self.options["aws"]["availability_zone"]
+
+        if "availability_zone" in self._driver_options():
+            availability_zone = self._driver_options()["availability_zone"]
         else:
             availability_zone = DEFAULT_AWS_AVAILABILITY_ZONE
 
@@ -295,7 +346,7 @@ class Ec2VmLauncher(VmLauncher):
         for location in locations:
             if location.availability_zone.name == availability_zone:
                 break
-        keyname = self.options["aws"]["keypair_name"]
+        keyname = self._driver_options()["keypair_name"]
         hostname = self.options["hostname"]
         node = conn.create_node(name=hostname,
                                 image=image,
@@ -312,10 +363,10 @@ class Ec2VmLauncher(VmLauncher):
         return conn
 
     def _access_id(self):
-        return self.options["aws"]["ec2_access_id"]
+        return self._driver_options()["ec2_access_id"]
 
     def _secret_key(self):
-        return self.options["aws"]["ec2_secret_key"]
+        return self._driver_options()["ec2_secret_key"]
 
 
 def build_vm_launcher(options):
@@ -324,6 +375,8 @@ def build_vm_launcher(options):
         vm_launcher = OpenstackVmLauncher(options)
     elif vm_host and vm_host == 'vagrant':
         vm_launcher = VagrantVmLauncher(options)
+    elif vm_host and vm_host == 'eucalyptus':
+        vm_launcher = EucalyptusVmLauncher(options)
     else:
         vm_launcher = Ec2VmLauncher(options)
     return vm_launcher

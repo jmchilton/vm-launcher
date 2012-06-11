@@ -263,6 +263,7 @@ class FileTransferManager:
                         sudo("gunzip -f '%s'" % transfer_target.compressed_basename(), user=self.transfer_as)
                     elif chunked:
                         sudo("cat '%s'_part* > '%s'" % (basename, basename), user=self.transfer_as)
+                        sudo("rm '%s_part'*" % (basename), user=self.transfer_as)
             except Exception as e:
                 print red("Failed to decompress or unsplit a transfered file.")
                 print red(e)

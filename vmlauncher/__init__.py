@@ -149,6 +149,8 @@ class VagrantVmLauncher(VmLauncher):
         return self.conn
 
     def __init__(self, options):
+        if not 'key_file' in options:
+            options['key_file'] = os.path.join(os.environ["HOME"], ".vagrant.d", "insecure_private_key")
         VmLauncher.__init__(self, 'vagrant', options)
         self.uuid = "test"
 

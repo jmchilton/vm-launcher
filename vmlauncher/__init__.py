@@ -327,10 +327,19 @@ class Ec2VmLauncher(VmLauncher):
             (bucket,  self._access_id(), self._secret_key())
         self._write_script("%s/upload_bundle.sh" % env.packaging_dir, upload_cmd)
 
-        name = self._driver_options()["package_image_name"]
+        name = self.package_image_name()
+
         manifest = "image.manifest.xml"
         register_cmd = "sudo ec2-register -K %s/ec2_key -C %s/ec2_cert %s/%s -n %s" % (env.packaging_dir, env.packaging_dir, bucket, manifest, name)
         self._write_script("%s/register_bundle.sh" % env.packaging_dir, register_cmd)
+
+    def package_image_name(self):
+        name = self._driver_options()["package_image_name"]
+        return name
+
+    def package_image_description(self, default=""):
+        description = self._driver_options().get("package_image_description", default)
+        return description
 
     def _write_script(self, path, contents):
         full_contents = "#!/bin/bash\n%s" % contents
@@ -348,6 +357,7 @@ class Ec2VmLauncher(VmLauncher):
             availability_zone = self._driver_options()["availability_zone"]
         else:
             availability_zone = DEFAULT_AWS_AVAILABILITY_ZONE
+        return availability_zone
 
     def _boot_new(self, conn):
         if "image_id" in self._driver_options():

@@ -67,7 +67,7 @@ setup(
     url='https://github.com/jmchilton/vm-launcher/',
     cmdclass={
         'pep8': Pep8Command,
-    },
+   },
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',

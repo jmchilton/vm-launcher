@@ -81,7 +81,6 @@ class VmLauncher:
     def __get_ssh_client(self):
         ip = self.get_ip()  # Subclasses should implement this
         key_file = self.get_key_file()
-        print "Creating ssh client connection to ip %s" % ip
         ssh_client = SSHClient(hostname=ip,
                                port=self.get_ssh_port(),
                                username=self.get_user(),
@@ -179,7 +178,7 @@ class OpenstackVmLauncher(VmLauncher):
         return self.conn
 
     def get_ip(self):
-        return self.public_ip
+        return self._wait_for_node_info(lambda node: node.public_ips + node.private_ips)
 
     def _boot_new(self, conn):
         if 'image_id' in self._driver_options():
@@ -190,18 +189,22 @@ class OpenstackVmLauncher(VmLauncher):
             flavor_id = self._driver_options()['flavor_id']
         else:
             flavor_id = None
-        key_name = self._driver_options()['keypair_name']
+        ex_keyname = self._driver_options()['ex_keyname']
         hostname = self.options['hostname']
 
         images = conn.list_images()
         image = [image for image in images if (not image_id) or (image.id == image_id)][0]
         sizes = conn.list_sizes()
-        size = [size for size in sizes if (not flavor_id) or (size.id == flavor_id)][0]
+        try:
+            size = [size for size in sizes if (not flavor_id) or (str(size.id) == str(flavor_id))][0]
+        except IndexError, e:
+            print "Cloudn't find flavor with id %s in flavors %s" % (flavor_id, sizes)
+            size = sizes[0]
 
         node = conn.create_node(name=hostname,
                                 image=image,
                                 size=size,
-                                key_name=key_name)
+                                ex_keyname=ex_keyname)
 
         iteration_node = node
         while iteration_node.state is not NodeState.RUNNING:
@@ -229,6 +232,10 @@ class OpenstackVmLauncher(VmLauncher):
                       openstack_api_key,
                       **driver_options)
         return conn
+
+    def package(self):
+        name = self._driver_options()["package_image_name"] or "cloudbiolinux"
+        self.conn.ex_save_image(self.node, name)
 
 
 class EucalyptusVmLauncher(VmLauncher):
@@ -287,6 +294,16 @@ class Ec2VmLauncher(VmLauncher):
         self.conn = self.__get_connection()
         return self.conn
 
+    def boto_connection(self):
+        """
+        Establish a boto library connection (for functionality not available in libcloud).
+        """
+        import boto.ec2
+        region = boto.ec2.get_region(self._availability_zone())
+        ec2_access_id = self._access_id()
+        ec2_secret_key = self._secret_key()
+        return region.connect(aws_access_key_id=ec2_access_id, aws_secret_access_key=ec2_secret_key)
+
     def package(self):
         env.packaging_dir = "/mnt/packaging"
         sudo("mkdir -p %s" % env.packaging_dir)
@@ -326,6 +343,12 @@ class Ec2VmLauncher(VmLauncher):
         put(ec2_key_path, "%s/ec2_key" % env.packaging_dir, use_sudo=True)
         put(ec2_cert_path, "%s/ec2_cert" % env.packaging_dir, use_sudo=True)
 
+    def _availability_zone(self):
+        if "availability_zone" in self._driver_options():
+            availability_zone = self._driver_options()["availability_zone"]
+        else:
+            availability_zone = DEFAULT_AWS_AVAILABILITY_ZONE
+
     def _boot_new(self, conn):
         if "image_id" in self._driver_options():
             image_id = self._driver_options()["image_id"]
@@ -337,11 +360,7 @@ class Ec2VmLauncher(VmLauncher):
         else:
             size_id = DEFAULT_AWS_SIZE_ID
 
-        if "availability_zone" in self._driver_options():
-            availability_zone = self._driver_options()["availability_zone"]
-        else:
-            availability_zone = DEFAULT_AWS_AVAILABILITY_ZONE
-
+        availability_zone = self._availability_zone()
         image = NodeImage(id=image_id, name="", driver="")
         size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
         locations = conn.list_locations()

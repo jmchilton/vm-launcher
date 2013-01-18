@@ -41,12 +41,17 @@ class VmLauncher:
         return self.key_file
 
     def boot_and_connect(self):
-        conn = self.connect_driver()
+        conn = self._connect_driver()
         node = self._boot()  # Subclasses should implement this, and return libcloud node like object
         self.conn = conn
         self.node = node
         self.uuid = node.uuid
         self.connect(conn)
+
+    def _connect_driver(self):
+        if not self.conn:
+            self.conn = self._get_connection()
+        return self.conn
 
     def _wait_for_node_info(self, f):
         initial_value = f(self.node)
@@ -73,7 +78,7 @@ class VmLauncher:
                 return node
 
     def destroy(self, node=None):
-        self.connect_driver()
+        self._connect_driver()
         if node == None:
             node = self.node
         self.conn.destroy_node(node)
@@ -104,7 +109,7 @@ class VmLauncher:
                 i = i + 1
 
     def list(self):
-        self.connect_driver()
+        self._connect_driver()
         return self.conn.list_nodes()
 
     def _boot(self):
@@ -143,9 +148,8 @@ class VagrantNode:
 class VagrantVmLauncher(VmLauncher):
     """Launches vagrant VMs."""
 
-    def connect_driver(self):
-        self.conn = VagrantConnection()
-        return self.conn
+    def _get_connection():
+        return VagrantConnection()
 
     def __init__(self, options):
         if not 'key_file' in options:
@@ -173,10 +177,6 @@ class OpenstackVmLauncher(VmLauncher):
     def __init__(self, options):
         VmLauncher.__init__(self, 'openstack', options)
 
-    def connect_driver(self):
-        self.conn = self.__get_connection()
-        return self.conn
-
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.public_ips + node.private_ips)
 
@@ -197,7 +197,7 @@ class OpenstackVmLauncher(VmLauncher):
         sizes = conn.list_sizes()
         try:
             size = [size for size in sizes if (not flavor_id) or (str(size.id) == str(flavor_id))][0]
-        except IndexError, e:
+        except IndexError:
             print "Cloudn't find flavor with id %s in flavors %s" % (flavor_id, sizes)
             size = sizes[0]
 
@@ -214,7 +214,7 @@ class OpenstackVmLauncher(VmLauncher):
         #conn.ex_add_floating_ip(node, self.public_ip)
         return node
 
-    def __get_connection(self):
+    def _get_connection(self):
         driver = get_driver(Provider.OPENSTACK)
         openstack_username = self._driver_options()['username']
         openstack_api_key = self._driver_options()['password']
@@ -246,11 +246,7 @@ class EucalyptusVmLauncher(VmLauncher):
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.public_ips)
 
-    def connect_driver(self):
-        self.conn = self.__get_connection()
-        return self.conn
-
-    def __get_connection(self):
+    def _get_connection(self):
         driver = get_driver(Provider.EUCALYPTUS)
         driver_option_keys = ['secret',
                               'secure',
@@ -289,10 +285,6 @@ class Ec2VmLauncher(VmLauncher):
 
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.extra['dns_name'])
-
-    def connect_driver(self):
-        self.conn = self.__get_connection()
-        return self.conn
 
     def boto_connection(self):
         """
@@ -386,7 +378,7 @@ class Ec2VmLauncher(VmLauncher):
                                 ex_keyname=keyname)
         return node
 
-    def __get_connection(self):
+    def _get_connection(self):
         driver = get_driver(Provider.EC2)
         ec2_access_id = self._access_id()
         ec2_secret_key = self._secret_key()

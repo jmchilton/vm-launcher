@@ -124,6 +124,21 @@ class VmLauncher:
             node = self._boot_new(conn)
         return node
 
+    def _image_from_id(self, image_id=None):
+        image = NodeImage(id=image_id, name="", driver="")
+        return image
+
+    def _get_image_id(self, image_id=None):
+        if not image_id:
+            if 'image_id' in self._driver_options():
+                image_id = self._driver_options()['image_id']
+            else:
+                image_id = self._default_image_id()
+        return image_id
+
+    def _default_image_id(self):
+        return None
+
 
 class VagrantConnection:
     """'Fake' connection type to mimic libcloud's but for Vagrant"""
@@ -181,10 +196,7 @@ class OpenstackVmLauncher(VmLauncher):
         return self._wait_for_node_info(lambda node: node.public_ips + node.private_ips)
 
     def _boot_new(self, conn):
-        if 'image_id' in self._driver_options():
-            image_id = self._driver_options()['image_id']
-        else:
-            image_id = None
+        image_id = self._get_image_id()
         if self._driver_options():
             flavor_id = self._driver_options()['flavor_id']
         else:
@@ -192,8 +204,7 @@ class OpenstackVmLauncher(VmLauncher):
         ex_keyname = self._driver_options()['ex_keyname']
         hostname = self.options['hostname']
 
-        images = conn.list_images()
-        image = [image for image in images if (not image_id) or (image.id == image_id)][0]
+        image = self._image_from_id(image_id)
         sizes = conn.list_sizes()
         try:
             size = [size for size in sizes if (not flavor_id) or (str(size.id) == str(flavor_id))][0]
@@ -263,10 +274,10 @@ class EucalyptusVmLauncher(VmLauncher):
         return self._driver_options()["ec2_access_id"]
 
     def _boot_new(self, conn):
-        image_id = self._driver_options()["image_id"]
+        image_id = self._get_image_id()
         size_id = self._driver_options()["size_id"]
 
-        image = NodeImage(id=image_id, name="", driver="")
+        image = self._image_from_id(image_id)
         size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
 
         keyname = self._driver_options()["keypair_name"]
@@ -295,6 +306,9 @@ class Ec2VmLauncher(VmLauncher):
         ec2_access_id = self._access_id()
         ec2_secret_key = self._secret_key()
         return region.connect(aws_access_key_id=ec2_access_id, aws_secret_access_key=ec2_secret_key)
+
+    def _default_image_id(self):
+        return DEFAULT_AWS_IMAGE_ID
 
     def package(self):
         env.packaging_dir = "/mnt/packaging"
@@ -352,10 +366,7 @@ class Ec2VmLauncher(VmLauncher):
         return availability_zone
 
     def _boot_new(self, conn):
-        if "image_id" in self._driver_options():
-            image_id = self._driver_options()["image_id"]
-        else:
-            image_id = DEFAULT_AWS_IMAGE_ID
+        image_id = self._get_image_id()
 
         if "size_id" in self._driver_options():
             size_id = self._driver_options()["size_id"]
@@ -363,7 +374,7 @@ class Ec2VmLauncher(VmLauncher):
             size_id = DEFAULT_AWS_SIZE_ID
 
         availability_zone = self._availability_zone()
-        image = NodeImage(id=image_id, name="", driver="")
+        image = self._image_from_id(image_id)
         size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
         locations = conn.list_locations()
         for location in locations:

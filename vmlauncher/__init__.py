@@ -2,7 +2,6 @@ import os
 import time
 
 from libcloud.compute.ssh import SSHClient
-from libcloud.compute.types import NodeState
 from libcloud.compute.base import NodeImage, NodeSize
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
@@ -12,7 +11,7 @@ DEFAULT_AWS_IMAGE_ID = "ami-0bf6af4e"
 DEFAULT_AWS_SIZE_ID = "m1.large"
 DEFAULT_AWS_AVAILABILITY_ZONE = "us-west-1"
 
-from fabric.api import local, env, sudo, put
+from fabric.api import local, env, sudo, put, run
 
 
 class VmLauncher:
@@ -139,6 +138,42 @@ class VmLauncher:
     def _default_image_id(self):
         return None
 
+    def _get_default_size_id(self):
+        return None
+
+    def _get_size_id_option(self):
+        return "size_id"
+
+    def _size_from_id(self, size_id):
+        size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
+        #sizes = conn.list_sizes()
+        #try:
+        #    size = [size for size in sizes if (not size_id) or (str(size.id) == str(size_id))][0]
+        #except IndexError:
+        #    print "Cloudn't find flavor with id %s in flavors %s" % (size_id, sizes)
+        #    size = sizes[0]
+        return size
+
+    def _get_size_id(self, size_id=None):
+        if not size_id:
+            size_id_option = self._get_size_id_option()
+            if size_id_option in self._driver_options():
+                size_id = self._driver_options()[size_id_option]
+            else:
+                size_id = self._get_default_size_id()
+        return size_id
+
+    def _boot_new(self, conn):
+        hostname = self._driver_options()["hostname"]
+        node = self.create_node(hostname)
+        return node
+
+    def access_id(self):
+        return self._driver_options()["access_id"]
+
+    def secret_key(self):
+        return self._driver_options()["secret_key"]
+
 
 class VagrantConnection:
     """'Fake' connection type to mimic libcloud's but for Vagrant"""
@@ -195,34 +230,21 @@ class OpenstackVmLauncher(VmLauncher):
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.public_ips + node.private_ips)
 
-    def _boot_new(self, conn):
+    def _get_size_id_option(self):
+        return "flavor_id"
+
+    def create_node(self, hostname, image_id=None, size_id=None, **kwds):
         image_id = self._get_image_id()
-        if self._driver_options():
-            flavor_id = self._driver_options()['flavor_id']
-        else:
-            flavor_id = None
-        ex_keyname = self._driver_options()['ex_keyname']
-        hostname = self.options['hostname']
-
         image = self._image_from_id(image_id)
-        sizes = conn.list_sizes()
-        try:
-            size = [size for size in sizes if (not flavor_id) or (str(size.id) == str(flavor_id))][0]
-        except IndexError:
-            print "Cloudn't find flavor with id %s in flavors %s" % (flavor_id, sizes)
-            size = sizes[0]
+        size_id = self._get_size_id()
+        size = self._size_from_id(size_id)
+        if 'ex_keyname' not in kwds:
+            kwds['ex_keyname'] = self._driver_options()['ex_keyname']
 
-        node = conn.create_node(name=hostname,
-                                image=image,
-                                size=size,
-                                ex_keyname=ex_keyname)
-
-        iteration_node = node
-        while iteration_node.state is not NodeState.RUNNING:
-            time.sleep(1)
-            iteration_node = [n for n in conn.list_nodes() if n.uuid == node.uuid][0]
-
-        #conn.ex_add_floating_ip(node, self.public_ip)
+        node = self.conn.create_node(name=hostname,
+                                     image=image,
+                                     size=size,
+                                     **kwds)
         return node
 
     def _get_connection(self):
@@ -266,26 +288,21 @@ class EucalyptusVmLauncher(VmLauncher):
                               'path']
 
         driver_options = self._get_driver_options(driver_option_keys)
-        ec2_access_id = self._access_id()
+        ec2_access_id = self.access_id()
         conn = driver(ec2_access_id, **driver_options)
         return conn
 
-    def _access_id(self):
-        return self._driver_options()["ec2_access_id"]
-
-    def _boot_new(self, conn):
+    def create_node(self, hostname, image_id=None, size_id=None, **kwds):
         image_id = self._get_image_id()
-        size_id = self._driver_options()["size_id"]
-
         image = self._image_from_id(image_id)
-        size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
-
-        keyname = self._driver_options()["keypair_name"]
-        hostname = self.options["hostname"]
-        node = conn.create_node(name=hostname,
-                                image=image,
-                                size=size,
-                                ex_keyname=keyname)
+        size_id = self._get_size_id()
+        size = self._size_from_id(size_id)
+        if 'ex_keyname' not in kwds:
+            kwds['ex_keyname'] = self._driver_options()["keypair_name"]
+        node = self.conn.create_node(name=hostname,
+                                     image=image,
+                                     size=size,
+                                     **kwds)
         return node
 
 
@@ -303,14 +320,30 @@ class Ec2VmLauncher(VmLauncher):
         """
         import boto.ec2
         region = boto.ec2.get_region(self._availability_zone())
-        ec2_access_id = self._access_id()
-        ec2_secret_key = self._secret_key()
+        ec2_access_id = self.access_id()
+        ec2_secret_key = self.secret_key()
         return region.connect(aws_access_key_id=ec2_access_id, aws_secret_access_key=ec2_secret_key)
 
     def _default_image_id(self):
         return DEFAULT_AWS_IMAGE_ID
 
     def package(self):
+        package_type = self._driver_options().get('package_type', 'default')
+        if package_type == "create_image":
+            self._create_image()
+        else:
+            self._default_package()
+
+    def _create_image(self):
+        ec2_conn = self.boto_connection()
+        instance_id = run("curl --silent http://169.254.169.254/latest/meta-data/instance-id")
+        name = self.package_image_name()
+        description = self.package_image_description(default="")
+        image_id = ec2_conn.create_image(instance_id, name=name, description=description)
+        if self._get_driver_options().get("make_public", False):
+            ec2_conn.modify_image_attribute(image_id, attribute='launchPermission', operation='add', groups=['all'])
+
+    def _default_package(self):
         env.packaging_dir = "/mnt/packaging"
         sudo("mkdir -p %s" % env.packaging_dir)
         self._copy_keys()
@@ -330,7 +363,7 @@ class Ec2VmLauncher(VmLauncher):
 
         bucket = self._driver_options()["package_bucket"]
         upload_cmd = "sudo ec2-upload-bundle -b %s -m /tmp/image.manifest.xml -a %s -s %s" % \
-            (bucket,  self._access_id(), self._secret_key())
+            (bucket,  self.access_id(), self.secret_key())
         self._write_script("%s/upload_bundle.sh" % env.packaging_dir, upload_cmd)
 
         name = self.package_image_name()
@@ -365,42 +398,44 @@ class Ec2VmLauncher(VmLauncher):
             availability_zone = DEFAULT_AWS_AVAILABILITY_ZONE
         return availability_zone
 
-    def _boot_new(self, conn):
-        image_id = self._get_image_id()
+    def _get_default_size_id(self):
+        return DEFAULT_AWS_SIZE_ID
 
-        if "size_id" in self._driver_options():
-            size_id = self._driver_options()["size_id"]
-        else:
-            size_id = DEFAULT_AWS_SIZE_ID
-
+    def _get_location(self):
         availability_zone = self._availability_zone()
-        image = self._image_from_id(image_id)
-        size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
-        locations = conn.list_locations()
+        locations = self.conn.list_locations()
         for location in locations:
             if location.availability_zone.name == availability_zone:
                 break
-        keyname = self._driver_options()["keypair_name"]
-        hostname = self.options["hostname"]
-        node = conn.create_node(name=hostname,
-                                image=image,
-                                size=size,
-                                location=location,
-                                ex_keyname=keyname)
+        return location
+
+    def create_node(self, hostname, image_id=None, size_id=None, location=None, **kwds):
+        image_id = self._get_image_id(image_id)
+        image = self._image_from_id(image_id)
+
+        size_id = self._get_size_id(size_id)
+        size = self._size_from_id(size_id)
+
+        if not location:
+            location = self._get_location()
+
+        if not "ex_keyname" in kwds:
+            keyname = self._driver_options()["keypair_name"]
+            kwds["ex_keyname"] = keyname
+
+        node = self.conn.create_node(name=hostname,
+                                     image=image,
+                                     size=size,
+                                     location=location,
+                                     **kwds)
         return node
 
     def _get_connection(self):
         driver = get_driver(Provider.EC2)
-        ec2_access_id = self._access_id()
-        ec2_secret_key = self._secret_key()
+        ec2_access_id = self.access_id()
+        ec2_secret_key = self.secret_key()
         conn = driver(ec2_access_id, ec2_secret_key)
         return conn
-
-    def _access_id(self):
-        return self._driver_options()["ec2_access_id"]
-
-    def _secret_key(self):
-        return self._driver_options()["ec2_secret_key"]
 
 
 def build_vm_launcher(options):

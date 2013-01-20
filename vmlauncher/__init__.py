@@ -340,7 +340,7 @@ class Ec2VmLauncher(VmLauncher):
         name = self.package_image_name()
         description = self.package_image_description(default="")
         image_id = ec2_conn.create_image(instance_id, name=name, description=description)
-        if self._get_driver_options().get("make_public", False):
+        if self._driver_options().get("make_public", False):
             ec2_conn.modify_image_attribute(image_id, attribute='launchPermission', operation='add', groups=['all'])
 
     def _default_package(self):

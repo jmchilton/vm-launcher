@@ -48,7 +48,7 @@ class VmLauncher:
         self.connect(conn)
 
     def _connect_driver(self):
-        if not self.conn:
+        if not getattr(self, 'conn', None):
             self.conn = self._get_connection()
         return self.conn
 
@@ -410,6 +410,7 @@ class Ec2VmLauncher(VmLauncher):
         return location
 
     def create_node(self, hostname, image_id=None, size_id=None, location=None, **kwds):
+        self._connect_driver()
         image_id = self._get_image_id(image_id)
         image = self._image_from_id(image_id)
 

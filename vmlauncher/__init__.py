@@ -164,7 +164,7 @@ class VmLauncher:
         return size_id
 
     def _boot_new(self, conn):
-        hostname = self._driver_options()["hostname"]
+        hostname = self.options.get("hostname", "vm_launcher_instance")
         node = self.create_node(hostname)
         return node
 

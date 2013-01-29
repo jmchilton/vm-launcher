@@ -116,9 +116,11 @@ class VmLauncher:
         if 'use_existing_instance' in self._driver_options():
             instance_id = self._driver_options()['use_existing_instance']
             nodes = conn.list_nodes()
-            node = [node for node in nodes if node.uuid == instance_id][0]
-            if not node:
-                raise Exception("Failed to find instance of uuid %s" % instance_id)
+            nodes_with_id = [node for node in nodes if node.uuid == instance_id]
+            if not nodes_with_id:
+                err_msg_template = "Specified use_existing_instance with instance id %s, but no such instance found."
+                raise Exception(err_msg_template % instance_id)
+            node = nodes_with_id[0]
         else:
             node = self._boot_new(conn)
         return node

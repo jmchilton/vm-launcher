@@ -446,12 +446,25 @@ class Ec2VmLauncher(VmLauncher):
 
 
 def build_vm_launcher(options):
-    vm_host = options.get('vm_host', None)   # Will just fall back on EC2
-    if vm_host and vm_host == 'openstack':
+    provider_option_key = 'vm_provider'
+    # HACK to maintain backward compatibity on vm_host option
+    if not 'vm_provider' in options and 'vm_host' in options:
+        print 'Using deprecated vm_host setting, please change this to vm_provider'
+        provider_option_key = 'vm_host'
+    driver = options.get(provider_option_key, 'aws')   # Will just fall back on EC2
+    if driver in options:
+        # Allow multiple sections or providers per driver (e.g. aws-project-1).
+        # Assume the driver is just the provider name unless the provider
+        # section sets an explict driver option. In above example,
+        # the aws-project-1 would have to have a "driver: 'aws'" option
+        # set.
+        provider_options = options.get(driver)
+        driver = provider_options.get('driver', driver)
+    if driver == 'openstack':
         vm_launcher = OpenstackVmLauncher(options)
-    elif vm_host and vm_host == 'vagrant':
+    elif driver == 'vagrant':
         vm_launcher = VagrantVmLauncher(options)
-    elif vm_host and vm_host == 'eucalyptus':
+    elif driver == 'eucalyptus':
         vm_launcher = EucalyptusVmLauncher(options)
     else:
         vm_launcher = Ec2VmLauncher(options)

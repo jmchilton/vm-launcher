@@ -26,7 +26,7 @@ class VmLauncher:
         if not key_file:
             key_file = self._driver_options()['key_file']
         # Expand tildes in path
-        key_file = os.path.expanduser(key_file)
+        self.key_file = os.path.expanduser(key_file)
         if not os.path.exists(self.key_file):
             raise Exception("Invalid or unspecified key_file option: %s" % self.key_file)
 

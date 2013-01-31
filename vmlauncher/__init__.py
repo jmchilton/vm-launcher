@@ -22,9 +22,11 @@ class VmLauncher:
         self.__set_and_verify_key()
 
     def __set_and_verify_key(self):
-        self.key_file = self.options['key_file']
+        key_file = self.options.get('key_file', None)
+        if not key_file:
+            key_file = self._driver_options()['key_file']
         if not os.path.exists(self.key_file):
-            raise Exception("Invalid or unspecified key_file options: %s" % self.key_file)
+            raise Exception("Invalid or unspecified key_file option: %s" % self.key_file)
 
     def _get_driver_options(self, driver_option_keys):
         driver_options = {}
@@ -442,7 +444,7 @@ class Ec2VmLauncher(VmLauncher):
 
 
 def build_vm_launcher(options):
-    vm_host = options['vm_host']
+    vm_host = options.get('vm_host', None)   # Will just fall back on EC2
     if vm_host and vm_host == 'openstack':
         vm_launcher = OpenstackVmLauncher(options)
     elif vm_host and vm_host == 'vagrant':

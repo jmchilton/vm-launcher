@@ -1,8 +1,8 @@
 # Configuring Cloud Parameters
 
-Currently four different virtual machine provides are implemented: `aws`,
-`openstack`, `eucalyptus` (partial support), and `vagrant`. Request for
-supporting additional cloud infrastructures can be created here
+Currently four different virtual machine providers are implemented: `aws`
+(default), `openstack`, `eucalyptus` (partial support), and `vagrant`. Request
+for supporting additional cloud infrastructures can be created here
 https://github.com/jmchilton/vm-launcher/issues/new or pull requests are
 always welcome. The `vm-launcher` project is built heavily on Apache
 [libcloud], so support should be implemented at that level first, though

@@ -16,9 +16,9 @@ from fabric.api import local, env, sudo, put, run
 
 class VmLauncher:
 
-    def __init__(self, driver_type, options):
+    def __init__(self, driver_options_key, options):
+        self.driver_options_key = driver_options_key
         self.options = options
-        self.driver_type = driver_type
         self.__set_and_verify_key()
 
     def __set_and_verify_key(self):
@@ -38,7 +38,7 @@ class VmLauncher:
         return driver_options
 
     def _driver_options(self):
-        return self.options[self.driver_type]
+        return self.options[self.driver_options_key]
 
     def get_key_file(self):
         return self.key_file
@@ -207,10 +207,10 @@ class VagrantVmLauncher(VmLauncher):
     def _get_connection():
         return VagrantConnection()
 
-    def __init__(self, options):
+    def __init__(self, driver_options_key, options):
         if not 'key_file' in options:
             options['key_file'] = os.path.join(os.environ["HOME"], ".vagrant.d", "insecure_private_key")
-        VmLauncher.__init__(self, 'vagrant', options)
+        VmLauncher.__init__(self, driver_options_key, options)
         self.uuid = "test"
 
     def _boot(self):
@@ -229,9 +229,6 @@ class VagrantVmLauncher(VmLauncher):
 
 class OpenstackVmLauncher(VmLauncher):
     """ Wrapper around libcloud's openstack API. """
-
-    def __init__(self, options):
-        VmLauncher.__init__(self, 'openstack', options)
 
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.public_ips + node.private_ips)
@@ -279,9 +276,6 @@ class OpenstackVmLauncher(VmLauncher):
 
 class EucalyptusVmLauncher(VmLauncher):
 
-    def __init__(self, options):
-        VmLauncher.__init__(self, 'eucalyptus', options)
-
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.public_ips)
 
@@ -313,9 +307,6 @@ class EucalyptusVmLauncher(VmLauncher):
 
 
 class Ec2VmLauncher(VmLauncher):
-
-    def __init__(self, options):
-        VmLauncher.__init__(self, 'aws', options)
 
     def get_ip(self):
         return self._wait_for_node_info(lambda node: node.extra['dns_name'])
@@ -452,6 +443,7 @@ def build_vm_launcher(options):
         print 'Using deprecated vm_host setting, please change this to vm_provider'
         provider_option_key = 'vm_host'
     driver = options.get(provider_option_key, 'aws')   # Will just fall back on EC2
+    driver_options_key = driver
     if driver in options:
         # Allow multiple sections or providers per driver (e.g. aws-project-1).
         # Assume the driver is just the provider name unless the provider
@@ -460,12 +452,9 @@ def build_vm_launcher(options):
         # set.
         provider_options = options.get(driver)
         driver = provider_options.get('driver', driver)
-    if driver == 'openstack':
-        vm_launcher = OpenstackVmLauncher(options)
-    elif driver == 'vagrant':
-        vm_launcher = VagrantVmLauncher(options)
-    elif driver == 'eucalyptus':
-        vm_launcher = EucalyptusVmLauncher(options)
-    else:
-        vm_launcher = Ec2VmLauncher(options)
+    driver_classes = {'openstack': OpenstackVmLauncher, 
+                      'vagrant': VagrantVmLauncher, 
+                      'eucalyptus': EucalyptusVmLauncher}
+    driver_class = driver_classes.get(driver, Ec2VmLauncher)
+    vm_launcher = driver_class(driver_options_key, options)
     return vm_launcher

@@ -273,6 +273,11 @@ class OpenstackVmLauncher(VmLauncher):
         name = self._driver_options()["package_image_name"] or "cloudbiolinux"
         self.conn.ex_save_image(self.node, name)
 
+    def attach_public_ip(self, public_ip=None):
+        if not public_ip:
+            public_ip = self._driver_options()["public_ip"]
+        self.conn._node_action(self.node, "addFloatingIp", address=public_ip)
+
 
 class EucalyptusVmLauncher(VmLauncher):
 
@@ -427,6 +432,11 @@ class Ec2VmLauncher(VmLauncher):
                                      location=location,
                                      **kwds)
         return node
+
+    def attach_public_ip(self, public_ip=None):
+        if not public_ip:
+            public_ip = self._driver_options()["public_ip"]
+        self.conn.ex_associate_addresses(self.node, public_ip)
 
     def _get_connection(self):
         driver = get_driver(Provider.EC2)

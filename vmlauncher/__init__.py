@@ -152,12 +152,6 @@ class VmLauncher:
 
     def _size_from_id(self, size_id):
         size = NodeSize(id=size_id, name="", ram=None, disk=None, bandwidth=None, price=None, driver="")
-        #sizes = conn.list_sizes()
-        #try:
-        #    size = [size for size in sizes if (not size_id) or (str(size.id) == str(size_id))][0]
-        #except IndexError:
-        #    print "Cloudn't find flavor with id %s in flavors %s" % (size_id, sizes)
-        #    size = sizes[0]
         return size
 
     def _get_size_id(self, size_id=None):
@@ -450,7 +444,7 @@ def build_vm_launcher(options):
     provider_option_key = 'vm_provider'
     # HACK to maintain backward compatibity on vm_host option
     if not 'vm_provider' in options and 'vm_host' in options:
-        print 'Using deprecated vm_host setting, please change this to vm_provider'
+        print "Using deprecated 'vm_host' setting, please change this to 'vm_provider'"
         provider_option_key = 'vm_host'
     driver = options.get(provider_option_key, 'aws')   # Will just fall back on EC2
     driver_options_key = driver
@@ -462,8 +456,8 @@ def build_vm_launcher(options):
         # set.
         provider_options = options.get(driver)
         driver = provider_options.get('driver', driver)
-    driver_classes = {'openstack': OpenstackVmLauncher, 
-                      'vagrant': VagrantVmLauncher, 
+    driver_classes = {'openstack': OpenstackVmLauncher,
+                      'vagrant': VagrantVmLauncher,
                       'eucalyptus': EucalyptusVmLauncher}
     driver_class = driver_classes.get(driver, Ec2VmLauncher)
     vm_launcher = driver_class(driver_options_key, options)

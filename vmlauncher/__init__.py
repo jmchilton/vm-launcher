@@ -117,16 +117,28 @@ class VmLauncher:
 
     def _boot(self):
         conn = self.conn
+        boot_new = True
+        last_instance_path = None
         if 'use_existing_instance' in self._driver_options():
+            boot_new = False
             instance_id = self._driver_options()['use_existing_instance']
-            nodes = conn.list_nodes()
-            nodes_with_id = [node for node in nodes if node.uuid == instance_id]
-            if not nodes_with_id:
-                err_msg_template = "Specified use_existing_instance with instance id %s, but no such instance found."
-                raise Exception(err_msg_template % instance_id)
-            node = nodes_with_id[0]
-        else:
+            if instance_id == "__auto__":
+                last_instance_path = ".vmlauncher_last_instance_%s" % self.driver_options_key
+                if not os.path.exist(last_instance_path):
+                    boot_new = True
+                else:
+                    instance_id = open(last_instance_path, "r").read()
+            if not boot_new:
+                nodes = conn.list_nodes()
+                nodes_with_id = [node for node in nodes if node.uuid == instance_id]
+                if not nodes_with_id:
+                    err_msg_template = "Specified use_existing_instance with instance id %s, but no such instance found."
+                    raise Exception(err_msg_template % instance_id)
+                node = nodes_with_id[0]
+        if boot_new:
             node = self._boot_new(conn)
+            if last_instance_path:
+                open(last_instance_path, "w").write(node.uuid)
         return node
 
     def _image_from_id(self, image_id=None):

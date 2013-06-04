@@ -124,7 +124,7 @@ class VmLauncher:
             instance_id = self._driver_options()['use_existing_instance']
             if instance_id == "__auto__":
                 last_instance_path = ".vmlauncher_last_instance_%s" % self.driver_options_key
-                if not os.path.exist(last_instance_path):
+                if not os.path.exists(last_instance_path):
                     boot_new = True
                 else:
                     instance_id = open(last_instance_path, "r").read()

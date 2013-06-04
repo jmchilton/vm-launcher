@@ -332,6 +332,12 @@ class Ec2VmLauncher(VmLauncher):
         ec2_secret_key = self.secret_key()
         return region.connect(aws_access_key_id=ec2_access_id, aws_secret_access_key=ec2_secret_key)
 
+    def boto_s3_connection(self):
+        from boto.s3.connection import S3Connection
+        ec2_access_id = self.access_id()
+        ec2_secret_key = self.secret_key()
+        return S3Connection(ec2_access_id, ec2_secret_key)
+
     def _default_image_id(self):
         return DEFAULT_AWS_IMAGE_ID
 

@@ -341,23 +341,32 @@ class Ec2VmLauncher(VmLauncher):
     def _default_image_id(self):
         return DEFAULT_AWS_IMAGE_ID
 
-    def package(self):
+    def package(self, **kwds):
         package_type = self._driver_options().get('package_type', 'default')
         if package_type == "create_image":
-            self._create_image()
+            self._create_image(**kwds)
         else:
-            self._default_package()
+            self._default_package(**kwds)
 
-    def _create_image(self):
+    def _create_image(self, **kwds):
         ec2_conn = self.boto_connection()
         instance_id = run("curl --silent http://169.254.169.254/latest/meta-data/instance-id")
-        name = self.package_image_name()
-        description = self.package_image_description(default="")
+
+        if "name" not in kwds:
+            name = self.package_image_name()
+        else:
+            name = kwds["name"]
+
+        if "description" not in kwds:
+            description = self.package_image_description(default="")
+        else:
+            description = kwds["description"]
+
         image_id = ec2_conn.create_image(instance_id, name=name, description=description)
         if self._driver_options().get("make_public", False):
             ec2_conn.modify_image_attribute(image_id, attribute='launchPermission', operation='add', groups=['all'])
 
-    def _default_package(self):
+    def _default_package(self, **kwds):
         env.packaging_dir = "/mnt/packaging"
         sudo("mkdir -p %s" % env.packaging_dir)
         self._copy_keys()

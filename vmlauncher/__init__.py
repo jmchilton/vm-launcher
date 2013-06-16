@@ -186,6 +186,14 @@ class VmLauncher:
     def secret_key(self):
         return self._driver_options()["secret_key"]
 
+    def package_image_name(self):
+        name = self._driver_options()["package_image_name"] or "cloudbiolinux"
+        return name
+
+    def package_image_description(self, default=""):
+        description = self._driver_options().get("package_image_description", default)
+        return description
+
 
 class VagrantConnection:
     """'Fake' connection type to mimic libcloud's but for Vagrant"""
@@ -229,7 +237,7 @@ class VagrantVmLauncher(VmLauncher):
     def get_user(self):
         return "vagrant"
 
-    def package(self):
+    def package(self, **kwds):
         local("vagrant package")
 
 
@@ -275,8 +283,8 @@ class OpenstackVmLauncher(VmLauncher):
                       **driver_options)
         return conn
 
-    def package(self):
-        name = self._driver_options()["package_image_name"] or "cloudbiolinux"
+    def package(self, **kwds):
+        name = kwds.get("name", self.package_image_name())
         self.conn.ex_save_image(self.node, name)
 
     def attach_public_ip(self, public_ip=None):
@@ -394,14 +402,6 @@ class Ec2VmLauncher(VmLauncher):
         manifest = "image.manifest.xml"
         register_cmd = "sudo ec2-register -K %s/ec2_key -C %s/ec2_cert %s/%s -n %s" % (env.packaging_dir, env.packaging_dir, bucket, manifest, name)
         self._write_script("%s/register_bundle.sh" % env.packaging_dir, register_cmd)
-
-    def package_image_name(self):
-        name = self._driver_options()["package_image_name"]
-        return name
-
-    def package_image_description(self, default=""):
-        description = self._driver_options().get("package_image_description", default)
-        return description
 
     def _write_script(self, path, contents):
         full_contents = "#!/bin/bash\n%s" % contents

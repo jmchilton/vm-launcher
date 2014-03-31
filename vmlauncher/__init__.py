@@ -176,13 +176,10 @@ class VmLauncher:
     def _get_size_id(self, size_id=None):
         if not size_id:
             size_id_option = self._get_size_id_option()
-            print size_id_option
             if size_id_option in self._driver_options():
                 size_id = self._driver_options()[size_id_option]
-                print size_id
             else:
                 size_id = self._get_default_size_id()
-                print size_id
         return size_id
 
     def _boot_new(self, conn):

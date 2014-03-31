@@ -101,14 +101,19 @@ class VmLauncher:
     def get_ssh_port(self):
         return 22
 
-    def connect(self, conn, tries=5):
+    def connect(self, conn, tries=100):
+        print 'Connecting via SSH.'
         i = 0
         while i < tries:
             try:
                 ssh_client = self.__get_ssh_client()
-                conn._ssh_client_connect(ssh_client=ssh_client, timeout=60)
+                # OpenStack stalls if the timeout is too high. 3 seconds is recommended default, so we just increase the number of tries
+                # Was 5 x 60 seconds so I went with 100 x 3 seconds
+                conn._ssh_client_connect(ssh_client=ssh_client, timeout=3)
+                print 'SSH Connection Established.'
                 return
             except:
+                print 'Connection Timeout. Retrying...'
                 i = i + 1
 
     def list(self):
@@ -169,10 +174,13 @@ class VmLauncher:
     def _get_size_id(self, size_id=None):
         if not size_id:
             size_id_option = self._get_size_id_option()
+            print size_id_option
             if size_id_option in self._driver_options():
                 size_id = self._driver_options()[size_id_option]
+                print size_id
             else:
                 size_id = self._get_default_size_id()
+                print size_id
         return size_id
 
     def _boot_new(self, conn):
@@ -250,19 +258,38 @@ class OpenstackVmLauncher(VmLauncher):
     def _get_size_id_option(self):
         return "flavor_id"
 
+    def _size_from_id(self, size_id):
+        sizes = self.conn.list_sizes()
+        size = [size for size in sizes if (not size_id) or (size.name == size_id)][0]
+        return size
+
     def create_node(self, hostname, image_id=None, size_id=None, **kwds):
         image_id = self._get_image_id()
         image = self._image_from_id(image_id)
         size_id = self._get_size_id()
         size = self._size_from_id(size_id)
+
         if 'ex_keyname' not in kwds:
             kwds['ex_keyname'] = self._driver_options()['ex_keyname']
 
+        security_group = self._driver_options()['security_group']
+        sec_groups = self.conn.ex_list_security_groups()
+        sec_group = [sec_group for sec_group in sec_groups if (not security_group) or (sec_group.name in security_group)]
+
+        print 'Launching instance...'
+        
         node = self.conn.create_node(name=hostname,
                                      image=image,
                                      size=size,
+                                     ex_security_groups=sec_group,
                                      **kwds)
-        return node
+
+        print 'Waiting for boot to complete.'
+        nodes_ips = self.conn.wait_until_running(nodes=[node], ssh_interface='private_ips')
+        active_node = nodes_ips[0][0]
+        print 'Boot complete. Node is: ', active_node
+
+        return active_node
 
     def _get_connection(self):
         driver = get_driver(Provider.OPENSTACK)
@@ -278,6 +305,7 @@ class OpenstackVmLauncher(VmLauncher):
                               'ex_tenant_name']
 
         driver_options = self._get_driver_options(driver_option_keys)
+        print driver_options
         conn = driver(openstack_username,
                       openstack_api_key,
                       **driver_options)

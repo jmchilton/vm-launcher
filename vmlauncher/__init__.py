@@ -89,10 +89,12 @@ class VmLauncher:
     def __get_ssh_client(self):
         ip = self.get_ip()  # Subclasses should implement this
         key_file = self.get_key_file()
+        # Had to add timeout to this line to avoid the SSH connection locking up the build
         ssh_client = SSHClient(hostname=ip,
                                port=self.get_ssh_port(),
                                username=self.get_user(),
-                               key=key_file)
+                               key=key_file,
+                               timeout=3)
         return ssh_client
 
     def get_user(self):
@@ -312,6 +314,7 @@ class OpenstackVmLauncher(VmLauncher):
         return conn
 
     def package(self, **kwds):
+        print 'Packaging instance...'
         name = kwds.get("name", self.package_image_name())
         self.conn.ex_save_image(self.node, name)
 

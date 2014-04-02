@@ -311,9 +311,12 @@ class OpenstackVmLauncher(VmLauncher):
         return conn
 
     def package(self, **kwds):
+        print "sleeping 60s while Galaxy loads completely..."
+        time.sleep(60)
         print 'Packaging instance...'
         name = kwds.get("name", self.package_image_name())
         self.conn.ex_save_image(self.node, name)
+        print "Packaging Done."
 
     def attach_public_ip(self, public_ip=None):
         if not public_ip:
